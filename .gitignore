@@ -1,0 +1,5 @@
+.*.swp
+*~
+.idea/
+threejs-examples.iml
+target
