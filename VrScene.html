@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <title>three.js example</title>
+</head>
+<body>
+<script src="logger.js"></script>
+
+<script type="module">
+    // Find the latest version by visiting https://unpkg.com/three.
+    import * as THREE from 'https://unpkg.com/three@0.126.1/build/three.module.js';
+
+    // from https://threejs.org/docs/#manual/en/introduction/How-to-create-VR-content
+    import { VRButton } from 'https://unpkg.com/three@0.126.1/examples/jsm/webxr/VRButton.js';
+
+    var logger = new Logger();
+
+    var clock;
+    var container;
+    var camera, scene, raycaster, renderer, balken, box1,ground;
+    var  avatar;
+    var isMouseDown = false;
+    var INTERSECTED;
+    var crosshair;
+    var controller1, controller2, lineraycaster,intersected = [];
+    var tempMatrix;
+    var group;
+
+    function init() {
+        logger.debug("init");
+
+        clock = new THREE.Clock();
+        tempMatrix = new THREE.Matrix4();
+
+        container = document.createElement( 'div' );
+        document.body.appendChild( container );
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color( 0x909090 );
+
+        group = new THREE.Group();
+        scene.add( group );
+
+        camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 10 );
+        //camera will be attached to avatar
+        //scene.add( camera );
+
+        crosshair = new THREE.Mesh(
+            new THREE.RingGeometry( 0.02, 0.04, 32 ),
+            new THREE.MeshBasicMaterial( {
+                color: 0xffffff,
+                opacity: 0.5,
+                transparent: true
+            } )
+        );
+        crosshair.position.z = - 2;
+        camera.add( crosshair );
+
+        //avatar = new THREE.Object3D();
+        avatar = new THREE.Mesh( new THREE.BoxGeometry( 0.1, 0.1, 0.1 ), new THREE.MeshLambertMaterial( { color:  0x00ff00 } ) );
+        //Seit r97 muss avatar auf den Ground avatar.position.set(0,1,0);
+        //Im Sitzen ist er trotzdem zu hoch, weil er von der Kalibrierungshöhe (190) ausgeht.
+        //Darum noch 70 runter. Dann passt es gut, auch wenn man die green box nicht mehr sieht.
+        avatar.position.set(0,-0.7,0);
+        avatar.add(camera);
+        scene.add(avatar);
+
+        scene.add( new THREE.HemisphereLight( 0x606060, 0x404040 ) );
+
+        var light = new THREE.DirectionalLight( 0xffffff );
+        light.position.set( 1, 1, 1 ).normalize();
+        scene.add( light );
+
+        var geometry = new THREE.BoxGeometry( 0.15, 0.15, 0.15 );
+        box1 = new THREE.Mesh( geometry, new THREE.MeshLambertMaterial( { color:  0xff0000 } ) );
+        box1.position.set(-1,1,-2);
+        group.add(box1);
+
+        balken = new THREE.Mesh( new THREE.BoxGeometry( 0.1, 0.1, 1 ), new THREE.MeshLambertMaterial( { color:  0x0000ff }) );
+        balken.position.set(0,1,-2);
+        group.add(balken);
+
+        geometry = new THREE.PlaneGeometry( 5, 5 );
+        ground = new THREE.Mesh( geometry, new THREE.MeshLambertMaterial( { color:  0x888888 } ) );
+        ground.position.set(0,0,0);
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+
+        raycaster = new THREE.Raycaster();
+
+        renderer = new THREE.WebGLRenderer( { antialias: true } );
+        renderer.setPixelRatio( window.devicePixelRatio );
+        renderer.setSize( window.innerWidth, window.innerHeight );
+        container.appendChild( renderer.domElement );
+
+        document.body.appendChild( VRButton.createButton( renderer ) );
+        renderer.vr.enabled = true;
+
+        renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
+        renderer.domElement.addEventListener( 'mouseup', onMouseUp, false );
+        renderer.domElement.addEventListener( 'touchstart', onMouseDown, false );
+        renderer.domElement.addEventListener( 'touchend', onMouseUp, false );
+
+        window.addEventListener( 'resize', onWindowResize, false );
+
+        function onDocumentKeyDown(event) {
+            logger.debug("event" + event.keyCode);
+
+            switch (event.keyCode) {
+                case 66: /*b*/
+                    avatar.position.setX(avatar.position.x+1);
+                    //camera.position.set( 15, -10, 120 );
+                    logger.debug("x="+avatar.position.x);
+                    break;
+                case 67: /*c*/
+                    avatar.position.setX(avatar.position.x-1);
+                    //camera.position.set( 15, -10, 120 );
+                    logger.debug("x="+avatar.position.x);
+                    break;
+            }
+        }
+        document.addEventListener("keydown", onDocumentKeyDown, false);
+
+        //see WebVRManager.js
+        // Controller need to be attached to Avatar, damit die Höhe passt.
+        //Die kann man offenbar schon anlegen, bevor WebVR aktiv ist. Erst beim enableVR werden die dann mit Leben gefüllt.
+        controller1 = renderer.vr.getController( 0 );
+        controller1.addEventListener( 'selectstart', onSelectStart );
+        controller1.addEventListener( 'selectend', onSelectEnd );
+        avatar.add( controller1 );
+        controller2 = renderer.vr.getController( 1 );
+        controller2.addEventListener( 'selectstart', onSelectStart );
+        controller2.addEventListener( 'selectend', onSelectEnd );
+        avatar.add( controller2 );
+        var geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 1 ) ] );
+        var line = new THREE.Line( geometry );
+        line.name = 'line';
+        line.scale.z = 5;
+        controller1.add( line.clone() );
+        controller2.add( line.clone() );
+        lineraycaster = new THREE.Raycaster();
+    }
+
+    function onMouseDown() {
+        isMouseDown = true;
+    }
+
+    function onMouseUp() {
+        isMouseDown = false;
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize( window.innerWidth, window.innerHeight );
+    }
+
+    function animate() {
+        // r97: setAnimationLoop instead of animate
+        renderer.setAnimationLoop( render );
+    }
+
+    function onSelectStart( event ) {
+        logger.debug("onSelectStart");
+        var controller = event.target;
+        var intersections = getIntersections( controller );
+        if ( intersections.length > 0 ) {
+            var intersection = intersections[ 0 ];
+            tempMatrix.getInverse( controller.matrixWorld );
+            var object = intersection.object;
+            object.matrix.premultiply( tempMatrix );
+            object.matrix.decompose( object.position, object.quaternion, object.scale );
+            object.material.emissive.b = 1;
+            controller.add( object );
+            controller.userData.selected = object;
+        }
+    }
+
+    function onSelectEnd( event ) {
+        var controller = event.target;
+        if ( controller.userData.selected !== undefined ) {
+            var object = controller.userData.selected;
+            object.matrix.premultiply( controller.matrixWorld );
+            object.matrix.decompose( object.position, object.quaternion, object.scale );
+            object.material.emissive.b = 0;
+            group.add( object );
+            controller.userData.selected = undefined;
+        }
+    }
+
+    function getIntersections( controller ) {
+        tempMatrix.identity().extractRotation( controller.matrixWorld );
+        lineraycaster.ray.origin.setFromMatrixPosition( controller.matrixWorld );
+        lineraycaster.ray.direction.set( 0, 0, -1 ).applyMatrix4( tempMatrix );
+        return lineraycaster.intersectObjects( group.children );
+    }
+
+    function intersectObjects( controller ) {
+        // Do not highlight when already selected
+        if ( controller.userData.selected !== undefined ) return;
+        var line = controller.getObjectByName( 'line' );
+        var intersections = getIntersections( controller );
+        if ( intersections.length > 0 ) {
+            var intersection = intersections[ 0 ];
+            var object = intersection.object;
+            object.material.emissive.r = 1;
+            intersected.push( object );
+            line.scale.z = intersection.distance;
+        } else {
+            line.scale.z = 5;
+        }
+    }
+
+    function cleanIntersected() {
+        while ( intersected.length ) {
+            var object = intersected.pop();
+            object.material.emissive.r = 0;
+        }
+    }
+
+    function render() {
+        var delta = clock.getDelta() * 60;
+
+        //18.10.18: THREE.VRController.update();
+
+        if ( isMouseDown === true ) {
+            //var cube = room.children[ 0 ];
+            //room.remove( cube );
+
+            //cube.position.set( 0, 0, - 0.75 );
+            //cube.position.applyQuaternion( camera.quaternion );
+            //cube.userData.velocity.x = ( Math.random() - 0.5 ) * 0.02 * delta;
+            //cube.userData.velocity.y = ( Math.random() - 0.5 ) * 0.02 * delta;
+            //cube.userData.velocity.z = ( Math.random() * 0.01 - 0.05 ) * delta;
+            //cube.userData.velocity.applyQuaternion( camera.quaternion );
+            //room.add( cube );
+        }
+
+        // find controller intersection
+        cleanIntersected();
+        intersectObjects( controller1 );
+        intersectObjects( controller2 );
+
+        // find crosshair intersections
+        raycaster.setFromCamera( { x: 0, y: 0 }, camera );
+        var intersects = raycaster.intersectObjects( [box1] );
+        if ( intersects.length > 0 ) {
+            if ( INTERSECTED != intersects[ 0 ].object ) {
+                if ( INTERSECTED ) INTERSECTED.material.emissive.setHex( INTERSECTED.currentHex );
+
+                INTERSECTED = intersects[ 0 ].object;
+                INTERSECTED.currentHex = INTERSECTED.material.emissive.getHex();
+                INTERSECTED.material.emissive.setHex( 0xff0000 );
+            }
+
+        } else {
+            if ( INTERSECTED ) INTERSECTED.material.emissive.setHex( INTERSECTED.currentHex );
+            INTERSECTED = undefined;
+        }
+
+        renderer.render( scene, camera );
+
+    }
+
+    init();
+    animate();
+
+</script>
+
+</body>
+</html>
