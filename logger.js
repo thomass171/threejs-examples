@@ -11,9 +11,10 @@ function openLoggerWindow() {
   }
 }
 
-class Logger {
+class PopupLogger {
 
   constructor() {
+    openLoggerWindow();
     this.debug("Welcome");
   }
 
@@ -22,4 +23,15 @@ class Logger {
   }
 }
 
-openLoggerWindow();
+class ConsoleLogger {
+
+  constructor() {
+    this.debug("Welcome");
+  }
+
+  debug(msg) {
+    console.log(msg);
+  }
+}
+
+
