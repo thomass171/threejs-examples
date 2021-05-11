@@ -1,6 +1,12 @@
-// Features
-// 1) highlights red box when it is hit by crosshair
-// 2) red box and blue balken can be grabbed and moved by trigger
+/** Features
+ * 1) highlights red box when it is hit by crosshair
+ * 2) red box and blue balken can be increased by trigger
+ * 3) teleport by click on ground
+ *
+ * vrmode
+ * 0) carrier (good working draft)
+ * 1) world transform (tricky and incomplete)
+ */
 
 // Find the latest version by visiting https://unpkg.com/three.
 // 128 contains latest integration of GUI to VR.
@@ -19,20 +25,23 @@ import { InteractiveGroup } from './three.js-r128/examples/jsm/interactive/Inter
 
 var logger = new ConsoleLogger();
 
-var clock;
-var container;
-var camera, scene, raycaster, renderer, balken, box1,ground;
-var  avatar;
-var isMouseDown = false;
+var clock, rotator;
+var container, world, worldOffset, carrier, adjustor, mainControlPanel;
+var camera, scene, crosshairraycaster, renderer, balken, box1, ground;
+var  avatar, carrierposition;
 var INTERSECTED;
-//var group;
 var crosshair;
 var controller1, controller2, lineraycaster,intersected = [];
 var tempMatrix;
-
-const prevGamePads = new Map();
-var speedFactor = [0.1, 0.1, 0.1, 0.1];
 var framecnt = 0;
+var adjust = new THREE.Vector3();
+var rotangle = 0;
+const VRMODE_CARRIER = 0;
+const VRMODE_WORLDTRANSFORM = 1;
+// adjustor results in too high position
+const VRMODE_CARRIER_ADJUSTOR = 2;
+var vrmode = VRMODE_CARRIER;
+
 
 const parameters = {
     radius: 0.5,
@@ -43,7 +52,77 @@ const parameters = {
     q: 3
 };
 
+class GridPanel {
+    constructor (wcells, hcells) {
+        this.texture = THREE.ImageUtils.loadTexture( "Iconset-LightBlue.png" );
+        this.cellsize = 0.1;
+        this.cellsize2 = this.cellsize / 2;
+        this.buttons = [];
+        this.width = wcells * this.cellsize;
+        this.height = hcells * this.cellsize;
+        // lower left
+        this.celloffsetx = -this.width / 2;
+        this.celloffsety = -this.height / 2;
+        this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(this.width, this.height), new THREE.MeshLambertMaterial({ color:0 }));
+    }
 
+    // y from bottom
+    addButton( x , y, iconx, icony, callback) {
+        //var geometry = new THREE.PlaneGeometry(this.cellsize,this.cellsize);
+        var geometry = new THREE.BufferGeometry();
+
+        const indices = [];
+        const vertices = [];
+        const normals = [];
+
+        const size = this.cellsize;
+        const halfSize = size / 2;
+
+        vertices.push( - halfSize, halfSize, 0 );
+        normals.push( 0, 0, 1 );
+        vertices.push( - halfSize, -halfSize, 0 );
+        normals.push( 0, 0, 1 );
+        vertices.push(  halfSize, -halfSize, 0 );
+        normals.push( 0, 0, 1 );
+        vertices.push(  halfSize, halfSize, 0 );
+        normals.push( 0, 0, 1 );
+
+        indices.push( 0, 1, 2,  2, 3, 0 );
+
+        geometry.setIndex( indices );
+        geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
+        geometry.setAttribute( 'normal', new THREE.Float32BufferAttribute( normals, 3 ) );
+
+        var cnt = 16;
+        var uvleftbottom = new THREE.Vector2( iconx / cnt,( cnt - icony - 1) / cnt);
+        var uvrighttop = new THREE.Vector2(( iconx + 1) / cnt, ( cnt - icony) / cnt);
+        var uvs = [];
+        uvs = [uvleftbottom.x, uvrighttop.y,
+            uvleftbottom.x,uvleftbottom.y,
+            uvrighttop.x,uvleftbottom.y,
+            uvrighttop.x,uvrighttop.y];
+        geometry.setAttribute( 'uv', new THREE.Float32BufferAttribute( uvs, 2 ));
+
+        var button = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map : this.texture }));
+        button.position.set(this.celloffsetx + x * this.cellsize + this.cellsize2,this.celloffsety + y * this.cellsize + this.cellsize2,0.01);
+        this.mesh.add(button);
+        this.buttons.push({b:button,c:callback});
+    }
+
+    processRayIntersections(ray) {
+
+        this.buttons.forEach( btn => {
+            //console.log("Probing button ",btn.b);
+            var intersections = ray.intersectObject( btn.b );
+            if ( intersections.length > 0 ) {
+                //console.log("button clicked");
+                btn.c();
+                return true;
+            }
+        });
+        return false;
+    }
+}
 
 function init() {
     logger.debug("init");
@@ -57,12 +136,36 @@ function init() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color( 0x909090 );
 
-    //var group = new THREE.Group();
-    //scene.add( group );
+    world = new THREE.Group();
+    scene.add( world );
 
     camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 10 );
-    //camera will be attached to avatar
-    //scene.add( camera );
+    scene.add( camera );
+
+    if (vrmode == VRMODE_WORLDTRANSFORM) {
+        worldOffset = new THREE.Vector3(0,1,0);
+        world.position.copy(worldOffset);
+        // camera position is set by VR system. camera needs to be in scene for crosshair
+        carrier = null;
+    } else {
+        worldOffset = null;
+        carrier = new THREE.Object3D();
+        carrierposition = new THREE.Vector3();
+        if (vrmode == VRMODE_CARRIER_ADJUSTOR) {
+            adjustor = new THREE.Object3D();
+            adjustor.add(camera);
+            carrier.add(adjustor);
+            adjustor.position.set( 0, -0.9, 0 );
+        } else {
+            carrier.add(camera);
+            //rotator = new THREE.Object3D();
+            //carrier.add(rotator);
+            //rotator.add(camera);
+            adjust.set( 0, -0.9, 0 );
+            resetCarrier();
+            scene.add(carrier);
+        }
+    }
 
     crosshair = new THREE.Mesh(
         new THREE.RingGeometry( 0.02, 0.04, 32 ),
@@ -80,32 +183,34 @@ function init() {
     //Seit r97 muss avatar auf den Ground avatar.position.set(0,1,0);
     //Im Sitzen ist er trotzdem zu hoch, weil er von der Kalibrierungshöhe (190) ausgeht.
     //Darum noch 70 runter. Dann passt es gut, auch wenn man die green box nicht mehr sieht.
-    avatar.position.set(0,-0.7,0);
-    avatar.add(camera);
-    scene.add(avatar);
+    avatar.position.set(0,1,0);
+    //avatar.add(camera);
+    world.add(avatar);
 
-    scene.add( new THREE.HemisphereLight( 0x606060, 0x404040 ) );
+
+    world.add( new THREE.HemisphereLight( 0x606060, 0x404040 ) );
 
     var light = new THREE.DirectionalLight( 0xffffff );
     light.position.set( 1, 1, 1 ).normalize();
-    scene.add( light );
+    world.add( light );
 
     var geometry = new THREE.BoxGeometry( 0.15, 0.15, 0.15 );
     box1 = new THREE.Mesh( geometry, new THREE.MeshLambertMaterial( { color:  0xff0000 } ) );
     box1.position.set(-1,1,-2);
-    scene.add(box1);
+    world.add(box1);
 
     balken = new THREE.Mesh( new THREE.BoxGeometry( 0.1, 0.1, 1 ), new THREE.MeshLambertMaterial( { color:  0x0000ff }) );
     balken.position.set(0,1,-2);
-    scene.add(balken);
+    world.add(balken);
 
-    geometry = new THREE.PlaneGeometry( 5, 5 );
-    ground = new THREE.Mesh( geometry, new THREE.MeshLambertMaterial( { color:  0x888888 } ) );
+    geometry = new THREE.PlaneGeometry( 10, 10, 10, 10 );
+    var groundmat = new THREE.MeshLambertMaterial( { color:  0x884444,wireframe:true } );
+    ground = new THREE.Mesh( geometry, groundmat );
     ground.position.set(0,0,0);
     ground.rotation.x = -Math.PI / 2;
-    scene.add(ground);
+    world.add(ground);
 
-    raycaster = new THREE.Raycaster();
+    crosshairraycaster = new THREE.Raycaster();
 
     renderer = new THREE.WebGLRenderer( { antialias: true } );
     renderer.setPixelRatio( window.devicePixelRatio );
@@ -113,12 +218,16 @@ function init() {
     container.appendChild( renderer.domElement );
 
     document.body.appendChild( VRButton.createButton( renderer ) );
-    renderer.vr.enabled = true;
+    renderer.xr.enabled = true;
+    //renderer.xr.setReferenceSpaceType( 'local' );
+    //renderer.xr.setReferenceSpaceType( 'local-floor' );
 
+    // event registry
     renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
     renderer.domElement.addEventListener( 'mouseup', onMouseUp, false );
     renderer.domElement.addEventListener( 'touchstart', onMouseDown, false );
     renderer.domElement.addEventListener( 'touchend', onMouseUp, false );
+    renderer.domElement.addEventListener( 'click', onMouseClick, true );
 
     window.addEventListener( 'resize', onWindowResize, false );
 
@@ -136,22 +245,31 @@ function init() {
                 //camera.position.set( 15, -10, 120 );
                 logger.debug("x="+avatar.position.x);
                 break;
+            case 89: /*y*/
+                if (adjustor != null) adjustor.translateY(0.1);
+                if (carrierposition != null) carrierposition.y += 0.1;
+                resetCarrier();
+                break;
+            case 90: /*z*/
+                if (adjustor != null) adjustor.translateY(-0.1);
+                if (carrierposition != null) carrierposition.y -= 0.1;
+                resetCarrier();
+                break;
         }
     }
     document.addEventListener("keydown", onDocumentKeyDown, false);
 
-
     //see WebVRManager.js
-    // Controller need to be attached to Avatar, damit die Höhe passt.
+    // Controller need to be attached to Avatar or scene, damit die Höhe passt.
     //Die kann man offenbar schon anlegen, bevor WebVR aktiv ist. Erst beim enableVR werden die dann mit Leben gefüllt.
     controller1 = renderer.xr.getController( 0 );
     controller1.addEventListener( 'selectstart', onSelectStart );
     controller1.addEventListener( 'selectend', onSelectEnd );
-    avatar.add( controller1 );
+    scene.add( controller1 );
     controller2 = renderer.xr.getController( 1 );
     controller2.addEventListener( 'selectstart', onSelectStart );
     controller2.addEventListener( 'selectend', onSelectEnd );
-    avatar.add( controller2 );
+    scene.add( controller2 );
     var geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 1 ) ] );
     var line = new THREE.Line( geometry );
     line.name = 'line';
@@ -159,6 +277,12 @@ function init() {
     controller1.add( line.clone() );
     controller2.add( line.clone() );
     lineraycaster = new THREE.Raycaster();
+
+    if (vrmode == VRMODE_CARRIER) {
+        // otherwise controller are too high, because carrier is lowered
+        carrier.add(controller1);
+        carrier.add(controller2);
+    }
 
     var cylinder = buildCylinder();
     controller1.add(cylinder);
@@ -176,7 +300,7 @@ function init() {
     gui.domElement.style.visibility = 'hidden';
 
     const igroup = new InteractiveGroup( renderer, camera );
-    scene.add( igroup );
+    world.add( igroup );
 
     const mesh = new HTMLMesh( gui.domElement );
     mesh.position.x = - 0.75;
@@ -185,14 +309,84 @@ function init() {
     //mesh.rotation.y = Math.PI / 4;
     mesh.scale.setScalar( 2 );
     igroup.add( mesh );
+
+    mainControlPanel = new GridPanel(5,3);
+    mainControlPanel.addButton(2,2,3,0,function(){adjusty(true);});
+    mainControlPanel.addButton(0,1,1,0,function(){adjustx(true);});
+    mainControlPanel.addButton(1,1,15,0,function(){turn(true);});
+    mainControlPanel.addButton(2,1,13,0,function(){calibrate();});
+    mainControlPanel.addButton(3,1,14,0,function(){turn(false)});
+    mainControlPanel.addButton(4,1,2,0,function(){adjustx(false);});
+    mainControlPanel.addButton(2,0,4,0,function(){adjusty(false);});
+    mainControlPanel.mesh.position.set(0.4,1.5,-2);
+    //for easy development
+    //mainControlPanel.mesh.position.set(0,-1,-0.6);
+    world.add(mainControlPanel.mesh);
 }
 
-function onMouseDown() {
-    isMouseDown = true;
+function turn(left) {
+    console.log("turn ",left);
+    const quaternion = new THREE.Quaternion();
+    var angle = ((left)?1:-1) * Math.PI / 4;
+    quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), angle );
+    rotangle += angle;
+
+    if (rotator != null) {
+
+        //rotator.rotateOnAxis(new THREE.Vector3( 0, 1, 0 ), angle);
+        quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), rotangle );
+        rotator.quaternion.copy(quaternion)
+    } else {
+        //carrier.rotation.y += ((left)?1:-1) * Math.PI / 4;
+        quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), rotangle );
+        carrier.quaternion.copy(quaternion)
+    }
+    resetCarrier();
 }
 
-function onMouseUp() {
-    isMouseDown = false;
+function adjustx(left) {
+    adjust.x += ((left)?-1:1) * 0.1;
+    resetCarrier();
+}
+
+function adjusty(up) {
+    adjust.y += ((up)?1:-1) * 0.1;
+    resetCarrier();
+}
+
+function calibrate() {
+    console.log("before calibrate ",camera.position);
+    camera.position.set(0,0,0);
+    console.log("after calibrate ",camera.position);
+}
+
+function resetCarrier() {
+    if (carrier != null) {
+        var v = new THREE.Vector3();
+        v.copy(carrierposition);
+        v.add(adjust);
+        console.log("resetCarrier ",carrierposition, adjust, v);
+        carrier.position.set(v.x, v.y, v.z);
+
+        var wp = new THREE.Vector3();
+        camera.getWorldPosition(wp);
+        console.log("camera world pos: ", wp);
+    }
+}
+
+function onMouseDown() {}
+
+function onMouseUp() {}
+
+function onMouseClick( event ) {
+
+    var p = new THREE.Vector2();
+    p.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+    p.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+    var raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera( p, camera );
+    processRayIntersections(raycaster);
 }
 
 function onWindowResize() {
@@ -207,19 +401,52 @@ function animate() {
 }
 
 function onSelectStart( event ) {
-    logger.debug("onSelectStart");
+    //console.log("camera.pos=",camera.position);
+
     var controller = event.target;
-    var intersections = getControllerRayIntersectionsOfBoxOrBalken( controller );
+    processRayIntersections(getControllerRay( controller));
+}
+
+function processRayIntersections(ray) {
+
+    if (mainControlPanel.processRayIntersections(ray)) {
+        // already processed
+        return;
+    }
+    var intersections = ray.intersectObjects([box1,balken]);
     if ( intersections.length > 0 ) {
         //grab box or balken
         var intersection = intersections[ 0 ];
-        tempMatrix.getInverse( controller.matrixWorld );
         var object = intersection.object;
+        object.scale.multiplyScalar(1.1);
+        /*tempMatrix.getInverse( controller.matrixWorld );
         object.matrix.premultiply( tempMatrix );
         object.matrix.decompose( object.position, object.quaternion, object.scale );
         object.material.emissive.b = 1;
+        // object changes space here and will "jump" down.
         controller.add( object );
-        controller.userData.selected = object;
+        controller.userData.selected = object;*/
+    } else {
+        intersections = ray.intersectObjects( [ground] );
+        if ( intersections.length > 0 ) {
+            //teleport
+            var intersection = intersections[ 0 ];
+            var p = intersection.point;
+
+            //console.log("teleport target=",p);
+
+            if (vrmode == VRMODE_WORLDTRANSFORM) {
+                var xoffset = world.position.x - p.x;
+                world.translateX(-p.x);
+                world.translateZ(-p.z);
+            } else {
+                var xoffset = p.x - carrier.position.x;
+                var zoffset = p.z - carrier.position.z;
+                carrierposition.x = p.x;
+                carrierposition.z = p.z;
+                resetCarrier();
+            }
+        }
     }
 }
 
@@ -236,18 +463,18 @@ function onSelectEnd( event ) {
     }
 }
 
-function getControllerRayIntersectionsOfBoxOrBalken( controller ) {
+function getControllerRay( controller ) {
     tempMatrix.identity().extractRotation( controller.matrixWorld );
     lineraycaster.ray.origin.setFromMatrixPosition( controller.matrixWorld );
     lineraycaster.ray.direction.set( 0, 0, -1 ).applyMatrix4( tempMatrix );
-    return lineraycaster.intersectObjects( /*group.children*/[box1,balken] );
+    return lineraycaster;
 }
 
 function intersectObjects( controller ) {
     // Do not highlight when already selected
     if ( controller.userData.selected !== undefined ) return;
     var line = controller.getObjectByName( 'line' );
-    var intersections = getControllerRayIntersectionsOfBoxOrBalken( controller );
+    var intersections = getControllerRayIntersections( controller, [box1,balken] );
     if ( intersections.length > 0 ) {
         var intersection = intersections[ 0 ];
         var object = intersection.object;
@@ -269,29 +496,14 @@ function cleanIntersected() {
 function render() {
     var delta = clock.getDelta() * 60;
 
-    //18.10.18: THREE.VRController.update();
-
-    if ( isMouseDown === true ) {
-        //var cube = room.children[ 0 ];
-        //room.remove( cube );
-
-        //cube.position.set( 0, 0, - 0.75 );
-        //cube.position.applyQuaternion( camera.quaternion );
-        //cube.userData.velocity.x = ( Math.random() - 0.5 ) * 0.02 * delta;
-        //cube.userData.velocity.y = ( Math.random() - 0.5 ) * 0.02 * delta;
-        //cube.userData.velocity.z = ( Math.random() * 0.01 - 0.05 ) * delta;
-        //cube.userData.velocity.applyQuaternion( camera.quaternion );
-        //room.add( cube );
-    }
-
     // find controller intersection
     cleanIntersected();
-    intersectObjects( controller1 );
-    intersectObjects( controller2 );
+    //10.5.21 needed? intersectObjects( controller1 );
+    //10.5.21 needed?intersectObjects( controller2 );
 
-    // find crosshair intersections (box1 only?)
-    raycaster.setFromCamera( { x: 0, y: 0 }, camera );
-    var intersects = raycaster.intersectObjects( [box1] );
+    // find crosshair intersections (box1 only)
+    crosshairraycaster.setFromCamera( { x: 0, y: 0 }, camera );
+    var intersects = crosshairraycaster.intersectObjects( [box1] );
     if ( intersects.length > 0 ) {
         if ( INTERSECTED != intersects[ 0 ].object ) {
             if ( INTERSECTED ) INTERSECTED.material.emissive.setHex( INTERSECTED.currentHex );
