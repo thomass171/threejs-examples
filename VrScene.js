@@ -1,11 +1,16 @@
 /** Features
  * 1) highlights red box when it is hit by crosshair
- * 2) red box and blue balken can be increased by trigger
+ * 2) red box and blue bar can be increased by trigger
  * 3) teleport by click on ground
  *
  * vrmode
- * 0) carrier (good working draft)
+ * 0) standalone camera carrier. camera/carrier NOT attached to avatar
  * 1) world transform (tricky and incomplete)
+ * 4) carrier attached to avatar
+ * 5) no carrier, camera unattached and unpositioned
+ *
+ * Best working with mode 4, 'local' and offset -0.1, which results in a head height of appx 1.9m (1m avatar + 1m 'vr cube' - 0.1) above ground
+ 'local-floor', even with offset -0.9 leads to too high position at appx 2.9m above ground or above avatar.
  */
 
 // Find the latest version by visiting https://unpkg.com/three.
@@ -26,7 +31,7 @@ import { InteractiveGroup } from './three.js-r128/examples/jsm/interactive/Inter
 var logger = new ConsoleLogger();
 
 var clock, rotator;
-var container, world, worldOffset, carrier, adjustor, mainControlPanel;
+var container, world, worldOffset, carrier, mainControlPanel;
 var camera, scene, crosshairraycaster, renderer, balken, box1, ground;
 var  avatar, carrierposition;
 var INTERSECTED;
@@ -38,9 +43,10 @@ var adjust = new THREE.Vector3();
 var rotangle = 0;
 const VRMODE_CARRIER = 0;
 const VRMODE_WORLDTRANSFORM = 1;
-// adjustor results in too high position
-const VRMODE_CARRIER_ADJUSTOR = 2;
-var vrmode = VRMODE_CARRIER;
+const VRMODE_CARRIERATTACHED = 4;
+const VRMODE_PLAIN = 5;
+var vrmode;
+var initialAdjust = -0.1;
 
 
 const parameters = {
@@ -127,6 +133,15 @@ class GridPanel {
 function init() {
     logger.debug("init");
 
+    var searchParams = new URLSearchParams(window.location.search);
+
+    if (searchParams.has("vrmode")) {
+        vrmode = 0 + parseInt(searchParams.get("vrmode"));
+    } else {
+        vrmode = VRMODE_CARRIER;
+    }
+    logger.debug("vrmode=" + vrmode);
+
     clock = new THREE.Clock();
     tempMatrix = new THREE.Matrix4();
 
@@ -142,29 +157,22 @@ function init() {
     camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 10 );
     scene.add( camera );
 
-    if (vrmode == VRMODE_WORLDTRANSFORM) {
+    if (vrmode == VRMODE_PLAIN) {
+        carrier = null;
+        carrierposition = null;
+    } else if (vrmode == VRMODE_WORLDTRANSFORM) {
         worldOffset = new THREE.Vector3(0,1,0);
         world.position.copy(worldOffset);
         // camera position is set by VR system. camera needs to be in scene for crosshair
         carrier = null;
     } else {
+        // VRMODE_CARRIERATTACHED and VRMODE_CARRIER
         worldOffset = null;
         carrier = new THREE.Object3D();
         carrierposition = new THREE.Vector3();
-        if (vrmode == VRMODE_CARRIER_ADJUSTOR) {
-            adjustor = new THREE.Object3D();
-            adjustor.add(camera);
-            carrier.add(adjustor);
-            adjustor.position.set( 0, -0.9, 0 );
-        } else {
-            carrier.add(camera);
-            //rotator = new THREE.Object3D();
-            //carrier.add(rotator);
-            //rotator.add(camera);
-            adjust.set( 0, -0.9, 0 );
-            resetCarrier();
-            scene.add(carrier);
-        }
+        carrier.add(camera);
+        adjust.set( 0, initialAdjust, 0 );
+        resetCarrier();
     }
 
     crosshair = new THREE.Mesh(
@@ -184,8 +192,13 @@ function init() {
     //Im Sitzen ist er trotzdem zu hoch, weil er von der Kalibrierungshöhe (190) ausgeht.
     //Darum noch 70 runter. Dann passt es gut, auch wenn man die green box nicht mehr sieht.
     avatar.position.set(0,1,0);
-    //avatar.add(camera);
     world.add(avatar);
+
+    if (vrmode == VRMODE_CARRIERATTACHED) {
+        avatar.add(carrier);
+    } else {
+        scene.add(carrier);
+    }
 
 
     world.add( new THREE.HemisphereLight( 0x606060, 0x404040 ) );
@@ -219,7 +232,10 @@ function init() {
 
     document.body.appendChild( VRButton.createButton( renderer ) );
     renderer.xr.enabled = true;
-    //renderer.xr.setReferenceSpaceType( 'local' );
+    logger.debug("ReferenceSpace=" + renderer.xr.getReferenceSpace());
+
+    //not supported renderer.xr.setReferenceSpaceType( 'unbounded' );
+    renderer.xr.setReferenceSpaceType( 'local' );
     //renderer.xr.setReferenceSpaceType( 'local-floor' );
 
     // event registry
@@ -246,12 +262,10 @@ function init() {
                 logger.debug("x="+avatar.position.x);
                 break;
             case 89: /*y*/
-                if (adjustor != null) adjustor.translateY(0.1);
                 if (carrierposition != null) carrierposition.y += 0.1;
                 resetCarrier();
                 break;
             case 90: /*z*/
-                if (adjustor != null) adjustor.translateY(-0.1);
                 if (carrierposition != null) carrierposition.y -= 0.1;
                 resetCarrier();
                 break;
@@ -278,7 +292,7 @@ function init() {
     controller2.add( line.clone() );
     lineraycaster = new THREE.Raycaster();
 
-    if (vrmode == VRMODE_CARRIER) {
+    if (carrier != null) {
         // otherwise controller are too high, because carrier is lowered
         carrier.add(controller1);
         carrier.add(controller2);
@@ -318,6 +332,7 @@ function init() {
     mainControlPanel.addButton(3,1,14,0,function(){turn(false)});
     mainControlPanel.addButton(4,1,2,0,function(){adjustx(false);});
     mainControlPanel.addButton(2,0,4,0,function(){adjusty(false);});
+    mainControlPanel.addButton(1,0,10,0,function(){info();});
     mainControlPanel.mesh.position.set(0.4,1.5,-2);
     //for easy development
     //mainControlPanel.mesh.position.set(0,-1,-0.6);
@@ -358,6 +373,11 @@ function calibrate() {
     console.log("before calibrate ",camera.position);
     camera.position.set(0,0,0);
     console.log("after calibrate ",camera.position);
+}
+
+function info() {
+    console.log("camera.position= ",camera.position);
+    logger.debug("ReferenceSpace=" + renderer.xr.getReferenceSpace());
 }
 
 function resetCarrier() {
@@ -440,11 +460,13 @@ function processRayIntersections(ray) {
                 world.translateX(-p.x);
                 world.translateZ(-p.z);
             } else {
-                var xoffset = p.x - carrier.position.x;
-                var zoffset = p.z - carrier.position.z;
-                carrierposition.x = p.x;
-                carrierposition.z = p.z;
-                resetCarrier();
+                if (carrier != null) {
+                    var xoffset = p.x - carrier.position.x;
+                    var zoffset = p.z - carrier.position.z;
+                    carrierposition.x = p.x;
+                    carrierposition.z = p.z;
+                    resetCarrier();
+                }
             }
         }
     }
