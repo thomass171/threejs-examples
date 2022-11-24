@@ -1,8 +1,4 @@
-/** Features
- * 1) highlights red box when it is hit by crosshair
- * 2) red box and blue bar can be increased by trigger
- * 3) teleport by click on ground
- *
+/**
  * vrmode
  * 0) standalone camera carrier. camera/carrier NOT attached to avatar
  * 1) world transform (tricky and incomplete)
@@ -10,7 +6,7 @@
  * 5) no carrier, camera unattached and unpositioned
  *
  * Best working with mode 4, 'local' and offset -0.1, which results in a head height of appx 1.9m (1m avatar + 1m 'vr cube' - 0.1) above ground
- 'local-floor', even with offset -0.9 leads to too high position at appx 2.9m above ground or above avatar.
+ * 'local-floor', even with offset -0.9 leads to too high position at appx 2.9m above ground or above avatar.
  */
 
 // Find the latest version by visiting https://unpkg.com/three.
@@ -30,7 +26,7 @@ import { InteractiveGroup } from './three.js-r128/examples/jsm/interactive/Inter
 
 var logger = new ConsoleLogger();
 
-var clock, rotator;
+var clock;
 var container, world, worldOffset, carrier, mainControlPanel;
 var camera, scene, crosshairraycaster, renderer, balken, box1, ground;
 var  avatar, carrierposition;
@@ -57,6 +53,14 @@ const parameters = {
     p: 2,
     q: 3
 };
+
+const vrControllerEventMap = new Map();
+vrControllerEventMap.set("right-button-4", function () {console.log("A pressed")});
+vrControllerEventMap.set("right-button-5", function () {console.log("B pressed")});
+vrControllerEventMap.set("right-stick-left", function () {turn(true)});
+vrControllerEventMap.set("right-stick-right", function () {turn(false)});
+vrControllerEventMap.set("right-stick-up", function () {console.log("Right stick up")});
+vrControllerEventMap.set("right-stick-down", function () {console.log("Right stick down")});
 
 class GridPanel {
     constructor (wcells, hcells) {
@@ -138,7 +142,8 @@ function init() {
     if (searchParams.has("vrmode")) {
         vrmode = 0 + parseInt(searchParams.get("vrmode"));
     } else {
-        vrmode = VRMODE_CARRIER;
+        // 24.11.22 why was it VRMODE_CARRIER before, which is not the best?
+        vrmode = VRMODE_CARRIERATTACHED;
     }
     logger.debug("vrmode=" + vrmode);
 
@@ -274,8 +279,10 @@ function init() {
     document.addEventListener("keydown", onDocumentKeyDown, false);
 
     //see WebVRManager.js
-    // Controller need to be attached to Avatar or scene, damit die Höhe passt.
-    //Die kann man offenbar schon anlegen, bevor WebVR aktiv ist. Erst beim enableVR werden die dann mit Leben gefüllt.
+    // Controller need to be attached to Avatar or scene for having the correct height (might relate to ReferenceSpaceType).
+    // Apparently can be used before WebVR becomes activ. With enabling VR they 'come alive'.
+    // Adding a gamepad reference as described in https://discourse.threejs.org/t/listening-to-xr-touchpad-or-thumbstick-motion-controller-events/17545/2
+    // is not needed for grabbing all events.
     controller1 = renderer.xr.getController( 0 );
     controller1.addEventListener( 'selectstart', onSelectStart );
     controller1.addEventListener( 'selectend', onSelectEnd );
@@ -346,16 +353,10 @@ function turn(left) {
     quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), angle );
     rotangle += angle;
 
-    if (rotator != null) {
-
-        //rotator.rotateOnAxis(new THREE.Vector3( 0, 1, 0 ), angle);
-        quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), rotangle );
-        rotator.quaternion.copy(quaternion)
-    } else {
-        //carrier.rotation.y += ((left)?1:-1) * Math.PI / 4;
-        quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), rotangle );
-        carrier.quaternion.copy(quaternion)
-    }
+    //carrier.rotation.y += ((left)?1:-1) * Math.PI / 4;
+    quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), rotangle );
+    //carrier.quaternion.copy(quaternion)
+    avatar.quaternion.copy(quaternion)
     resetCarrier();
 }
 
@@ -460,12 +461,17 @@ function processRayIntersections(ray) {
                 world.translateX(-p.x);
                 world.translateZ(-p.z);
             } else {
-                if (carrier != null) {
-                    var xoffset = p.x - carrier.position.x;
-                    var zoffset = p.z - carrier.position.z;
-                    carrierposition.x = p.x;
-                    carrierposition.z = p.z;
-                    resetCarrier();
+                if (vrmode == VRMODE_CARRIERATTACHED) {
+                    avatar.position.x = p.x;
+                    avatar.position.z = p.z;
+                } else {
+                    if (carrier != null) {
+                        var xoffset = p.x - carrier.position.x;
+                        var zoffset = p.z - carrier.position.z;
+                        carrierposition.x = p.x;
+                        carrierposition.z = p.z;
+                        resetCarrier();
+                    }
                 }
             }
         }
@@ -540,6 +546,7 @@ function render() {
         INTERSECTED = undefined;
     }
 
+    pollControllerEvents(renderer, vrControllerEventMap);
     renderer.render( scene, camera );
     framecnt++;
 }
