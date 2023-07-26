@@ -10,6 +10,12 @@
 # textures
 wovado from https://opengameart.org/content/stone-wall-1.
 
+# Lighting
+
+Bar and box are unshaded, but still need light. The wall is shaded. With lighmode 1 its brighter in
+the mid and darker left and right. Teleport nearer and walk along the wall by 'c'/'b'
+to see the effect. Or move the point light on z-axis by 's'/'w'.
+
 # Changelog
 
 25.7.23:

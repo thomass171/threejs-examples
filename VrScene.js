@@ -1,10 +1,14 @@
 /**
+ * Optional parameter are
  * vrmode
  * 0) standalone camera carrier. camera/carrier NOT attached to avatar
  * 1) world transform (tricky and incomplete)
  * 4) carrier attached to avatar (default)
  * 5) no carrier, camera unattached and unpositioned
  * -1) VR disabled
+ * lightmode
+ * 0) simple lighting with one Hemi... and one Directional
+ * 1) one pointlight
  *
  * Best working with mode 4, 'local' and offset -0.1, which results in a head height of appx 1.9m (1m avatar + 1m 'vr cube' - 0.1) above ground
  * 'local-floor', even with offset -0.9 leads to too high position at appx 2.9m above ground or above avatar.
@@ -45,6 +49,8 @@ const VRMODE_CARRIERATTACHED = 4;
 const VRMODE_PLAIN = 5;
 var vrmode;
 var initialAdjust = -0.1;
+var lightmode;
+var pointlight = null;
 
 
 const parameters = {
@@ -149,6 +155,13 @@ function init() {
     }
     logger.debug("vrmode=" + vrmode);
 
+    if (searchParams.has("lightmode")) {
+        lightmode = 0 + parseInt(searchParams.get("lightmode"));
+    } else {
+        lightmode = 0;
+    }
+    logger.debug("lightmode=" + lightmode);
+
     clock = new THREE.Clock();
     tempMatrix = new THREE.Matrix4();
 
@@ -207,12 +220,7 @@ function init() {
         scene.add(carrier);
     }
 
-
-    world.add( new THREE.HemisphereLight( 0x606060, 0x404040 ) );
-
-    var light = new THREE.DirectionalLight( 0xffffff );
-    light.position.set( 1, 1, 1 ).normalize();
-    world.add( light );
+    addLight();
 
     var geometry = new THREE.BoxGeometry( 0.15, 0.15, 0.15 );
     box1 = new THREE.Mesh( geometry, new THREE.MeshLambertMaterial( { color:  0xff0000 } ) );
@@ -285,6 +293,17 @@ function init() {
                 if (carrierposition != null) carrierposition.y -= 0.1;
                 resetCarrier();
                 break;
+            case 83: /*s*/
+                if (pointlight != null) {
+                    pointlight.position.setZ(pointlight.position.z + 1);
+                }
+                break;
+            case 87: /*w*/
+                if (pointlight != null) {
+                    pointlight.position.setZ(pointlight.position.z - 1);
+                }
+                break;
+
         }
     }
     document.addEventListener("keydown", onDocumentKeyDown, false);
@@ -593,6 +612,25 @@ function addWall() {
     wall.position.set(0,0.5,-10/2);
     //wall.rotation.x = -Math.PI / 2;
     world.add(wall);
+}
+
+function addLight() {
+
+    switch (lightmode) {
+        case 0: /*default*/
+            logger.debug("Adding default light");
+            world.add( new THREE.HemisphereLight( 0x606060, 0x404040 ) );
+            var light = new THREE.DirectionalLight( 0xffffff );
+            light.position.set( 1, 1, 1 ).normalize();
+            world.add( light );
+            break;
+        case 1:
+            logger.debug("Adding point light");
+            pointlight = new THREE.PointLight( 0xffffff );
+            pointlight.position.set( -2, 1, -3 ).normalize();
+            world.add( pointlight );
+            break;
+    }
 }
 
 init();
