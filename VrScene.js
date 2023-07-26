@@ -2,8 +2,9 @@
  * vrmode
  * 0) standalone camera carrier. camera/carrier NOT attached to avatar
  * 1) world transform (tricky and incomplete)
- * 4) carrier attached to avatar
+ * 4) carrier attached to avatar (default)
  * 5) no carrier, camera unattached and unpositioned
+ * -1) VR disabled
  *
  * Best working with mode 4, 'local' and offset -0.1, which results in a head height of appx 1.9m (1m avatar + 1m 'vr cube' - 0.1) above ground
  * 'local-floor', even with offset -0.9 leads to too high position at appx 2.9m above ground or above avatar.
@@ -28,7 +29,7 @@ var logger = new ConsoleLogger();
 
 var clock;
 var container, world, worldOffset, carrier, mainControlPanel;
-var camera, scene, crosshairraycaster, renderer, balken, box1, ground;
+var camera, scene, crosshairraycaster, renderer, bar, box1, ground, wall;
 var  avatar, carrierposition;
 var INTERSECTED;
 var crosshair;
@@ -37,6 +38,7 @@ var tempMatrix;
 var framecnt = 0;
 var adjust = new THREE.Vector3();
 var rotangle = 0;
+const VRMODE_DISABLED = -1;
 const VRMODE_CARRIER = 0;
 const VRMODE_WORLDTRANSFORM = 1;
 const VRMODE_CARRIERATTACHED = 4;
@@ -171,7 +173,7 @@ function init() {
         // camera position is set by VR system. camera needs to be in scene for crosshair
         carrier = null;
     } else {
-        // VRMODE_CARRIERATTACHED and VRMODE_CARRIER
+        // VRMODE_CARRIERATTACHED, VRMODE_CARRIER, VR_DISABLED
         worldOffset = null;
         carrier = new THREE.Object3D();
         carrierposition = new THREE.Vector3();
@@ -199,7 +201,7 @@ function init() {
     avatar.position.set(0,1,0);
     world.add(avatar);
 
-    if (vrmode == VRMODE_CARRIERATTACHED) {
+    if (vrmode == VRMODE_CARRIERATTACHED || vrmode == VRMODE_DISABLED) {
         avatar.add(carrier);
     } else {
         scene.add(carrier);
@@ -217,16 +219,12 @@ function init() {
     box1.position.set(-1,1,-2);
     world.add(box1);
 
-    balken = new THREE.Mesh( new THREE.BoxGeometry( 0.1, 0.1, 1 ), new THREE.MeshLambertMaterial( { color:  0x0000ff }) );
-    balken.position.set(0,1,-2);
-    world.add(balken);
+    bar = new THREE.Mesh( new THREE.BoxGeometry( 0.1, 0.1, 1 ), new THREE.MeshLambertMaterial( { color:  0x0000ff }) );
+    bar.position.set(0,1,-2);
+    world.add(bar);
 
-    geometry = new THREE.PlaneGeometry( 10, 10, 10, 10 );
-    var groundmat = new THREE.MeshLambertMaterial( { color:  0x884444,wireframe:true } );
-    ground = new THREE.Mesh( geometry, groundmat );
-    ground.position.set(0,0,0);
-    ground.rotation.x = -Math.PI / 2;
-    world.add(ground);
+    addGround();
+    addWall();
 
     crosshairraycaster = new THREE.Raycaster();
 
@@ -235,13 +233,15 @@ function init() {
     renderer.setSize( window.innerWidth, window.innerHeight );
     container.appendChild( renderer.domElement );
 
-    document.body.appendChild( VRButton.createButton( renderer ) );
-    renderer.xr.enabled = true;
-    logger.debug("ReferenceSpace=" + renderer.xr.getReferenceSpace());
+    if (vrmode != VRMODE_DISABLED) {
+        document.body.appendChild( VRButton.createButton( renderer ) );
+        renderer.xr.enabled = true;
+        logger.debug("ReferenceSpace=" + renderer.xr.getReferenceSpace());
 
-    //not supported renderer.xr.setReferenceSpaceType( 'unbounded' );
-    renderer.xr.setReferenceSpaceType( 'local' );
-    //renderer.xr.setReferenceSpaceType( 'local-floor' );
+        //not supported renderer.xr.setReferenceSpaceType( 'unbounded' );
+        renderer.xr.setReferenceSpaceType( 'local' );
+        //renderer.xr.setReferenceSpaceType( 'local-floor' );
+    }
 
     // event registry
     renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
@@ -256,6 +256,17 @@ function init() {
         logger.debug("event" + event.keyCode);
 
         switch (event.keyCode) {
+            case 37: /*curleft*/
+                turn(true);
+                turn(true);
+                break;
+            case 38: /*curup*/
+                // not needed, because teleporting can be done by mouse click.
+                break;
+            case 39: /*curright*/
+                turn(false);
+                turn(false);
+                break;
             case 66: /*b*/
                 avatar.position.setX(avatar.position.x+1);
                 //camera.position.set( 15, -10, 120 );
@@ -278,35 +289,37 @@ function init() {
     }
     document.addEventListener("keydown", onDocumentKeyDown, false);
 
-    //see WebVRManager.js
-    // Controller need to be attached to Avatar or scene for having the correct height (might relate to ReferenceSpaceType).
-    // Apparently can be used before WebVR becomes activ. With enabling VR they 'come alive'.
-    // Adding a gamepad reference as described in https://discourse.threejs.org/t/listening-to-xr-touchpad-or-thumbstick-motion-controller-events/17545/2
-    // is not needed for grabbing all events.
-    controller1 = renderer.xr.getController( 0 );
-    controller1.addEventListener( 'selectstart', onSelectStart );
-    controller1.addEventListener( 'selectend', onSelectEnd );
-    scene.add( controller1 );
-    controller2 = renderer.xr.getController( 1 );
-    controller2.addEventListener( 'selectstart', onSelectStart );
-    controller2.addEventListener( 'selectend', onSelectEnd );
-    scene.add( controller2 );
-    var geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 1 ) ] );
-    var line = new THREE.Line( geometry );
-    line.name = 'line';
-    line.scale.z = 5;
-    controller1.add( line.clone() );
-    controller2.add( line.clone() );
-    lineraycaster = new THREE.Raycaster();
+    if (vrmode != VRMODE_DISABLED) {
+        //see WebVRManager.js
+        // Controller need to be attached to Avatar or scene for having the correct height (might relate to ReferenceSpaceType).
+        // Apparently can be used before WebVR becomes activ. With enabling VR they 'come alive'.
+        // Adding a gamepad reference as described in https://discourse.threejs.org/t/listening-to-xr-touchpad-or-thumbstick-motion-controller-events/17545/2
+        // is not needed for grabbing all events.
+        controller1 = renderer.xr.getController( 0 );
+        controller1.addEventListener( 'selectstart', onSelectStart );
+        controller1.addEventListener( 'selectend', onSelectEnd );
+        scene.add( controller1 );
+        controller2 = renderer.xr.getController( 1 );
+        controller2.addEventListener( 'selectstart', onSelectStart );
+        controller2.addEventListener( 'selectend', onSelectEnd );
+        scene.add( controller2 );
+        var geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 1 ) ] );
+        var line = new THREE.Line( geometry );
+        line.name = 'line';
+        line.scale.z = 5;
+        controller1.add( line.clone() );
+        controller2.add( line.clone() );
+        lineraycaster = new THREE.Raycaster();
 
-    if (carrier != null) {
-        // otherwise controller are too high, because carrier is lowered
-        carrier.add(controller1);
-        carrier.add(controller2);
+        if (carrier != null) {
+            // otherwise controller are too high, because carrier is lowered
+            carrier.add(controller1);
+            carrier.add(controller2);
+        }
+
+        var cylinder = buildCylinder();
+        controller1.add(cylinder);
     }
-
-    var cylinder = buildCylinder();
-    controller1.add(cylinder);
 
     // GUI
     function onChange() {}
@@ -434,9 +447,9 @@ function processRayIntersections(ray) {
         // already processed
         return;
     }
-    var intersections = ray.intersectObjects([box1,balken]);
+    var intersections = ray.intersectObjects([box1,bar]);
     if ( intersections.length > 0 ) {
-        //grab box or balken
+        //grab box or bar
         var intersection = intersections[ 0 ];
         var object = intersection.object;
         object.scale.multiplyScalar(1.1);
@@ -481,7 +494,7 @@ function processRayIntersections(ray) {
 function onSelectEnd( event ) {
     var controller = event.target;
     if ( controller.userData.selected !== undefined ) {
-        // release box or balken
+        // release box or bar
         var object = controller.userData.selected;
         object.matrix.premultiply( controller.matrixWorld );
         object.matrix.decompose( object.position, object.quaternion, object.scale );
@@ -502,7 +515,7 @@ function intersectObjects( controller ) {
     // Do not highlight when already selected
     if ( controller.userData.selected !== undefined ) return;
     var line = controller.getObjectByName( 'line' );
-    var intersections = getControllerRayIntersections( controller, [box1,balken] );
+    var intersections = getControllerRayIntersections( controller, [box1,bar] );
     if ( intersections.length > 0 ) {
         var intersection = intersections[ 0 ];
         var object = intersection.object;
@@ -558,6 +571,29 @@ function buildCylinder() {
     return cylinder;
 }
 
+function addGround() {
+    var geometry = new THREE.PlaneGeometry( 10, 10, 10, 10 );
+    var groundmat = new THREE.MeshLambertMaterial( { color:  0x884444,wireframe:true } );
+    ground = new THREE.Mesh( geometry, groundmat );
+    ground.position.set(0,0,0);
+    ground.rotation.x = -Math.PI / 2;
+    world.add(ground);
+}
+
+function addWall() {
+    var geometry = new THREE.PlaneGeometry( 10, 1, 10, 1 );
+    //
+    var texture = new THREE.TextureLoader().load("textures/wovado/stone_wall02-diffuse_map.png");
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set( 10, 1 );
+    //var wallmat = new THREE.MeshLambertMaterial( { color:  0x880044,wireframe:false } );
+    var wallmat = new THREE.MeshLambertMaterial( { map:  texture,wireframe:false } );
+    wall = new THREE.Mesh( geometry, wallmat );
+    wall.position.set(0,0.5,-10/2);
+    //wall.rotation.x = -Math.PI / 2;
+    world.add(wall);
+}
 
 init();
 animate();
