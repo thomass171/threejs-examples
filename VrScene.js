@@ -51,6 +51,9 @@ var vrmode;
 var initialAdjust = -0.1;
 var lightmode;
 var pointlight = null;
+var cycle = 0;
+var maxCycle = 2;
+var wallConfig = {};
 
 
 const parameters = {
@@ -285,6 +288,13 @@ function init() {
                 //camera.position.set( 15, -10, 120 );
                 logger.debug("x="+avatar.position.x);
                 break;
+            case 78: /*n*/
+                cycle++;
+                if (cycle >= maxCycle) {
+                    cycle = 0;
+                }
+                updateCycle();
+                break;
             case 89: /*y*/
                 if (carrierposition != null) carrierposition.y += 0.1;
                 resetCarrier();
@@ -376,6 +386,8 @@ function init() {
     //for easy development
     //mainControlPanel.mesh.position.set(0,-1,-0.6);
     world.add(mainControlPanel.mesh);
+
+    updateCycle();
 }
 
 function turn(left) {
@@ -600,15 +612,25 @@ function addGround() {
 }
 
 function addWall() {
-    var geometry = new THREE.PlaneGeometry( 10, 1, 10, 1 );
+    wallConfig = {}
+    wallConfig.geometry = new THREE.PlaneGeometry( 10, 1, 10, 1 );
     //
-    var texture = new THREE.TextureLoader().load("textures/wovado/stone_wall02-diffuse_map.png");
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set( 10, 1 );
+    wallConfig.texture = new THREE.TextureLoader().load("textures/wovado/stone_wall02-diffuse_map.png");
+    wallConfig.texture.wrapS = THREE.RepeatWrapping;
+    wallConfig.texture.wrapT = THREE.RepeatWrapping;
+    wallConfig.texture.repeat.set( 10, 1 );
+    wallConfig.ntexture = new THREE.TextureLoader().load("textures/wovado/stone_wall02-normal_map.png");
+    wallConfig.ntexture.wrapS = THREE.RepeatWrapping;
+    wallConfig.ntexture.wrapT = THREE.RepeatWrapping;
+    wallConfig.ntexture.repeat.set( 10, 1 );
     //var wallmat = new THREE.MeshLambertMaterial( { color:  0x880044,wireframe:false } );
-    var wallmat = new THREE.MeshLambertMaterial( { map:  texture,wireframe:false } );
-    wall = new THREE.Mesh( geometry, wallmat );
+    wallConfig.wallmat = new THREE.MeshPhongMaterial( {
+        map:  wallConfig.texture,
+        normalMap: wallConfig.ntexture,
+        normalScale: new THREE.Vector2( 0.8, 0.8),
+        wireframe:false
+    } );
+    wall = new THREE.Mesh( wallConfig.geometry, wallConfig.wallmat );
     wall.position.set(0,0.5,-10/2);
     //wall.rotation.x = -Math.PI / 2;
     world.add(wall);
@@ -631,6 +653,22 @@ function addLight() {
             world.add( pointlight );
             break;
     }
+}
+
+function updateCycle() {
+
+    switch (cycle % 2) {
+        case 0:
+            wallConfig.wallmat.normalMap = wallConfig.ntexture;
+            wallConfig.wallmat.needsUpdate = true;
+            break;
+        case 1:
+            //wallConfig.wallmat.map = null;
+            wallConfig.wallmat.normalMap = null;
+            wallConfig.wallmat.needsUpdate = true;
+            break;
+    }
+    logger.debug("wallConfig.wallmat.normalMap="+wallConfig.wallmat.normalMap);
 }
 
 init();
