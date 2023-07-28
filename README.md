@@ -9,6 +9,7 @@
 
 # textures
 wovado from https://opengameart.org/content/stone-wall-1.
+cethiel from https://opengameart.org/content/tileable-bricks-ground-textures-set-1
 
 # Lighting
 

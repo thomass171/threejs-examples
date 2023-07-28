@@ -54,6 +54,7 @@ var pointlight = null;
 var cycle = 0;
 var maxCycle = 2;
 var wallConfig = {};
+var groundConfig = {};
 
 
 const parameters = {
@@ -603,9 +604,25 @@ function buildCylinder() {
 }
 
 function addGround() {
-    var geometry = new THREE.PlaneGeometry( 10, 10, 10, 10 );
-    var groundmat = new THREE.MeshLambertMaterial( { color:  0x884444,wireframe:true } );
-    ground = new THREE.Mesh( geometry, groundmat );
+    groundConfig = {}
+    groundConfig.geometry = new THREE.PlaneGeometry( 10, 10, 10, 10 );
+    groundConfig.texture = new THREE.TextureLoader().load("textures/cethiel/Ground_02.png");
+    groundConfig.texture.wrapS = THREE.RepeatWrapping;
+    groundConfig.texture.wrapT = THREE.RepeatWrapping;
+    groundConfig.texture.repeat.set( 10, 10 );
+    groundConfig.ntexture = new THREE.TextureLoader().load("textures/cethiel/Ground_02_Nrm.png");
+    groundConfig.ntexture.wrapS = THREE.RepeatWrapping;
+    groundConfig.ntexture.wrapT = THREE.RepeatWrapping;
+    groundConfig.ntexture.repeat.set( 10, 10 );
+    //groundConfig.groundmat = new THREE.MeshLambertMaterial( { color:  0x884444,wireframe:true } );
+    groundConfig.groundmat = new THREE.MeshPhongMaterial( {
+        //color:  0x884444,
+        map:  groundConfig.texture,
+        normalMap: groundConfig.ntexture,
+        normalScale: new THREE.Vector2( 0.8, 0.8),
+        wireframe: false
+    } );
+    ground = new THREE.Mesh( groundConfig.geometry, groundConfig.groundmat );
     ground.position.set(0,0,0);
     ground.rotation.x = -Math.PI / 2;
     world.add(ground);
