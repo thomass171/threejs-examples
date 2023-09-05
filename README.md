@@ -1,4 +1,6 @@
-# threejs VR example
+# threejs VR examples
+
+#VrScene
 
 ## Features
  1) highlights red box when it is hit by crosshair
@@ -23,4 +25,8 @@ to see the effect. Or move the point light on z-axis by 's'/'w'.
 - key controls CURLEFT,CURRIGHT added
 - VR_DISABLED added
 - Textured wall added
- 
+
+# FpsScene
+
+Simple for now, but should meet ThreeJs example games_fps.html (https://threejs.org/examples/#games_fps)
+one day using model collision-world.glb and VR.
