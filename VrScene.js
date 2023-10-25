@@ -67,8 +67,14 @@ const parameters = {
 };
 
 const vrControllerEventMap = new Map();
-vrControllerEventMap.set("right-button-4", function () {console.log("A pressed")});
-vrControllerEventMap.set("right-button-5", function () {console.log("B pressed")});
+vrControllerEventMap.set("right-button-4-down", function () {console.log("A pressed")});
+vrControllerEventMap.set("right-button-5-down", function () {console.log("B pressed")});
+vrControllerEventMap.set("right-button-4-up", function () {console.log("A released")});
+vrControllerEventMap.set("right-button-5-up", function () {console.log("B released")});
+vrControllerEventMap.set("left-button-4-down", function () {console.log("X pressed")});
+vrControllerEventMap.set("left-button-5-down", function () {console.log("Y pressed")});
+vrControllerEventMap.set("left-button-4-up", function () {console.log("X released")});
+vrControllerEventMap.set("left-button-5-up", function () {console.log("Y released")});
 vrControllerEventMap.set("right-stick-left", function () {turn(true)});
 vrControllerEventMap.set("right-stick-right", function () {turn(false)});
 vrControllerEventMap.set("right-stick-up", function () {console.log("Right stick up")});

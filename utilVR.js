@@ -3,7 +3,8 @@
  * without speedfactor and hapticActuators
  *
  * Button map for Oculus Rift
- * 0 Trigger
+ * 0 Trigger (seems to be a button with value range 0.0-1.0)
+ * 1 Grabber (seems to be a button with value range 0.0-1.0)
  * 4 -> 'X' on left and 'A' on right
  * 5 -> 'Y' on left and 'B' on right
  *
@@ -19,12 +20,9 @@ const prevGamePads = new Map();
 
 
 var debugLog = false;
-var axisThreshold = 0.7;
+var axisThresholdUpper = 0.7;
+var axisThresholdLower = 0.2;
 var stickFired = [];
-stickFired['right2'] = false;
-stickFired['right3'] = false;
-stickFired['left2'] = false;
-stickFired['left3'] = false;
 
 function pollControllerEvents(renderer, eventMap) {
   var handedness = "unknown";
@@ -59,34 +57,49 @@ function pollControllerEvents(renderer, eventMap) {
               if (debugLog) console.log(data.handedness + " button " + button + " value changed from " + old.buttons[button] + " to " + value);
               //check if it is 'all the way pushed'
               if (value === 1) {
-                if (debugLog) console.log("Button" + button + "Down");
-                checkEvent(data.handedness + "-button-" + button, eventMap);
+                if (debugLog) console.log("Button " + button + " down");
+                checkEvent(data.handedness + "-button-" + button + "-down", eventMap);
               } else {
-                 if (debugLog) console.log("Button" + button + "Up");
-                 // No action currently for releasing a button
+                if (debugLog) console.log("Button " + button + " up");
+                checkEvent(data.handedness + "-button-" + button + "-up", eventMap);
               }
             }
           });
           data.axes.forEach((value, axis) => {
             // handlers for thumbsticks
             // convert thumbstick action to button event
-            if (Math.abs(value) > axisThreshold) {
-              if (debugLog) console.log(data.handedness + " axis " + axis + " values exceeds threshold:", value);
+            if (Math.abs(value) > axisThresholdUpper) {
+              if (debugLog) console.log(data.handedness + " axis " + axis + " value exceeds threshold " + value);
               // avoid repeated events for one movement
               if (!stickFired[data.handedness+axis]) {
                   if (axis == 2) {
                     //left and right axis on thumbsticks
-                    checkEvent(data.handedness + "-stick-" + ((value<0)?"left":"right"), eventMap);
-                    stickFired[data.handedness+axis] = true;
+                    var dir = (value<0)?"left":"right";
+                    checkEvent(data.handedness + "-stick-" + dir, eventMap);
+                    stickFired[data.handedness+axis] = dir;
                   }
                   if (axis == 3) {
                     //up and down axis on thumbsticks
-                    checkEvent(data.handedness + "-stick-" + ((value<0)?"up":"down"), eventMap);
-                    stickFired[data.handedness+axis] = true;
+                    var dir = (value<0)?"up":"down";
+                    checkEvent(data.handedness + "-stick-" + dir, eventMap);
+                    stickFired[data.handedness+axis] = dir;
                   }
               }
-            } else {
-              stickFired[data.handedness+axis] = false;
+            }
+            if (Math.abs(value) < axisThresholdLower) {
+              if (stickFired[data.handedness+axis] != null) {
+                var firedDir = stickFired[data.handedness+axis];
+                if (debugLog) console.log(data.handedness + " axis " + axis + " value back below threshold " + value, firedDir);
+                if (axis == 2) {
+                  //left and right axis on thumbsticks
+                  checkEvent(data.handedness + "-stick-" + firedDir + "-center", eventMap);
+                }
+                if (axis == 3) {
+                  //up and down axis on thumbsticks
+                  checkEvent(data.handedness + "-stick-" + firedDir + "-center", eventMap);
+                }
+                stickFired[data.handedness+axis] = null;
+              }
             }
           });
         }
