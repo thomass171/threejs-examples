@@ -105,6 +105,7 @@ function isIterable(obj) {
 }
 
 function checkEvent(eventKey, eventMap) {
+    if (debugLog) console.log("checkEvent for ", eventKey);
     var eventFunction = eventMap.get(eventKey);
     if (eventFunction != null) {
         eventFunction();
