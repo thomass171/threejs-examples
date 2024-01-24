@@ -57,6 +57,7 @@ var wallConfig = {};
 var groundConfig = {};
 var gui = null;
 var htmlmesh = null;
+var grabbed = null;
 
 const parameters = {
     // have framecnt here to see gui is really updated
@@ -95,10 +96,10 @@ vrControllerEventMap.set("right-stick-up", function () {console.log("Right stick
 vrControllerEventMap.set("right-stick-down", function () {console.log("Right stick down")});
 
 // grab button, or is it a stick?
-vrControllerEventMap.set("left-button-1-down", function () {console.log("left grabbed");parameters.leftcontroller.grabbed=1;});
-vrControllerEventMap.set("left-button-1-up", function () {console.log("left grabber released");parameters.leftcontroller.grabbed=0;});
-vrControllerEventMap.set("right-button-1-down", function () {console.log("right grabbed");parameters.rightcontroller.grabbed=1;});
-vrControllerEventMap.set("right-button-1-up", function () {console.log("right grabber released");parameters.rightcontroller.grabbed=0;});
+vrControllerEventMap.set("left-button-1-down", function () {console.log("left grabbed");parameters.leftcontroller.grabbed=1;tryGrab(cylinder);});
+vrControllerEventMap.set("left-button-1-up", function () {console.log("left grabber released");parameters.leftcontroller.grabbed=0;unGrab();});
+vrControllerEventMap.set("right-button-1-down", function () {console.log("right grabbed");parameters.rightcontroller.grabbed=1;tryGrab(rightcylinder);});
+vrControllerEventMap.set("right-button-1-up", function () {console.log("right grabber released");parameters.rightcontroller.grabbed=0;unGrab();});
 
 class GridPanel {
     constructor (wcells, hcells) {
@@ -753,6 +754,39 @@ function updateCycle() {
             break;
     }
     logger.debug("wallConfig.wallmat.normalMap="+wallConfig.wallmat.normalMap);
+}
+
+/**
+ * try grab by cylinder because controller seem to have no position
+ */
+function tryGrab(cyl) {
+    var wp = new THREE.Vector3();
+    wp.setFromMatrixPosition( cyl.matrixWorld );
+
+    [box1,bar].forEach((element, index) => {
+        var distance = wp.distanceTo(element.position);
+        //console.log("distance="+distance);
+        if (distance < 0.5) {
+            grabbed = element;
+            cyl.attach(element);
+            console.log("grabbed");
+        }
+    });
+}
+
+function unGrab() {
+    if (grabbed != null) {
+        var wp = new THREE.Vector3();
+        wp.setFromMatrixPosition( grabbed.matrixWorld );
+        var wr = new THREE.Quaternion();
+        grabbed.getWorldQuaternion(wr);
+        console.log("ungrab at ", wp);
+        grabbed.parent.remove(grabbed);
+        grabbed.position.copy(wp);
+        grabbed.setRotationFromQuaternion(wr);
+        scene.attach(grabbed);
+        grabbed = null;
+    }
 }
 
 init();
