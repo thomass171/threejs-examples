@@ -60,10 +60,10 @@ function pollControllerEvents(renderer, eventMap) {
               //check if it is 'all the way pushed'
               if (value === 1) {
                 if (debugLog) console.log("Button " + button + " down");
-                checkEvent(data.handedness + "-button-" + button + "-down", eventMap);
+                checkVrControllerEvent(data.handedness + "-button-" + button + "-down", eventMap);
               } else {
                 if (debugLog) console.log("Button " + button + " up");
-                checkEvent(data.handedness + "-button-" + button + "-up", eventMap);
+                checkVrControllerEvent(data.handedness + "-button-" + button + "-up", eventMap);
               }
             }
           });
@@ -77,13 +77,13 @@ function pollControllerEvents(renderer, eventMap) {
                   if (axis == 2) {
                     //left and right axis on thumbsticks
                     var dir = (value<0)?"left":"right";
-                    checkEvent(data.handedness + "-stick-" + dir, eventMap);
+                    checkVrControllerEvent(data.handedness + "-stick-" + dir, eventMap);
                     stickFired[data.handedness+axis] = dir;
                   }
                   if (axis == 3) {
                     //up and down axis on thumbsticks
                     var dir = (value<0)?"up":"down";
-                    checkEvent(data.handedness + "-stick-" + dir, eventMap);
+                    checkVrControllerEvent(data.handedness + "-stick-" + dir, eventMap);
                     stickFired[data.handedness+axis] = dir;
                   }
               }
@@ -94,11 +94,11 @@ function pollControllerEvents(renderer, eventMap) {
                 if (debugLog) console.log(data.handedness + " axis " + axis + " value back below threshold " + value, firedDir);
                 if (axis == 2) {
                   //left and right axis on thumbsticks
-                  checkEvent(data.handedness + "-stick-" + firedDir + "-center", eventMap);
+                  checkVrControllerEvent(data.handedness + "-stick-" + firedDir + "-center", eventMap);
                 }
                 if (axis == 3) {
                   //up and down axis on thumbsticks
-                  checkEvent(data.handedness + "-stick-" + firedDir + "-center", eventMap);
+                  checkVrControllerEvent(data.handedness + "-stick-" + firedDir + "-center", eventMap);
                 }
                 stickFired[data.handedness+axis] = null;
               }
@@ -119,8 +119,8 @@ function isIterable(obj) {
   return typeof obj[Symbol.iterator] === "function";
 }
 
-function checkEvent(eventKey, eventMap) {
-    if (debugLog) console.log("checkEvent for ", eventKey);
+function checkVrControllerEvent(eventKey, eventMap) {
+    if (debugLog) console.log("checkVrControllerEvent for ", eventKey);
     var eventFunction = eventMap.get(eventKey);
     if (eventFunction != null) {
         eventFunction();
