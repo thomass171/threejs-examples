@@ -33,13 +33,13 @@ var logger = new ConsoleLogger();
 
 var clock;
 var container, world, worldOffset, carrier, mainControlPanel;
-var camera, scene, crosshairraycaster, renderer, bar, box1, ground, wall;
+var camera, scene, crosshairraycaster, renderer, bar, box1, ground, wall, cylinder;
 var  avatar, carrierposition;
 var INTERSECTED;
 var crosshair;
 var controller1, controller2, lineraycaster,intersected = [];
+var controllerGrip1, controllerGrip2;
 var tempMatrix;
-var framecnt = 0;
 var adjust = new THREE.Vector3();
 var rotangle = 0;
 const VRMODE_DISABLED = -1;
@@ -55,15 +55,26 @@ var cycle = 0;
 var maxCycle = 2;
 var wallConfig = {};
 var groundConfig = {};
-
+var gui = null;
+var htmlmesh = null;
 
 const parameters = {
-    radius: 0.5,
+    // have framecnt here to see gui is really updated
+    framecnt: 0,
     tube: 0.2,
     tubularSegments: 150,
     radialSegments: 20,
     p: 2,
-    q: 3
+    q: 3,
+    rightcontroller: {
+        position: {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0
+        },
+        grabbed: 0
+    }
+
 };
 
 const vrControllerEventMap = new Map();
@@ -79,6 +90,12 @@ vrControllerEventMap.set("right-stick-left", function () {turn(true)});
 vrControllerEventMap.set("right-stick-right", function () {turn(false)});
 vrControllerEventMap.set("right-stick-up", function () {console.log("Right stick up")});
 vrControllerEventMap.set("right-stick-down", function () {console.log("Right stick down")});
+
+// grab button, or is it a stick?
+vrControllerEventMap.set("left-button-1-down", function () {console.log("left grabbed")});
+vrControllerEventMap.set("left-button-1-up", function () {console.log("left grabber released")});
+vrControllerEventMap.set("right-button-1-down", function () {console.log("right grabbed");parameters.rightcontroller.grabbed=1;});
+vrControllerEventMap.set("right-button-1-up", function () {console.log("right grabber released");parameters.rightcontroller.grabbed=0;});
 
 class GridPanel {
     constructor (wcells, hcells) {
@@ -335,10 +352,12 @@ function init() {
         controller1.addEventListener( 'selectstart', onSelectStart );
         controller1.addEventListener( 'selectend', onSelectEnd );
         scene.add( controller1 );
+        controllerGrip1 = renderer.xr.getControllerGrip( 0 );
         controller2 = renderer.xr.getController( 1 );
         controller2.addEventListener( 'selectstart', onSelectStart );
         controller2.addEventListener( 'selectend', onSelectEnd );
         scene.add( controller2 );
+        controllerGrip2 = renderer.xr.getControllerGrip( 1 );
         var geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 1 ) ] );
         var line = new THREE.Line( geometry );
         line.name = 'line';
@@ -353,32 +372,41 @@ function init() {
             carrier.add(controller2);
         }
 
-        var cylinder = buildCylinder();
+        cylinder = buildCylinder();
         controller1.add(cylinder);
     }
 
     // GUI
     function onChange() {}
 
-    const gui = new GUI( { width: 300 } );
-    gui.add( parameters, 'radius', 0.0, 1.0 ).onChange( onChange );
+    // https://github.com/dataarts/dat.gui/blob/master/API.md
+    gui = new GUI( { width: 300 } );
+    // gui.add(object, property, [min], [max], [step])
+    gui.add( parameters, 'framecnt', 0, 100000, 1 ).listen().onChange( onChange );
     gui.add( parameters, 'tube', 0.0, 1.0 ).onChange( onChange );
     gui.add( parameters, 'tubularSegments', 10, 150, 1 ).onChange( onChange );
     gui.add( parameters, 'radialSegments', 2, 20, 1 ).onChange( onChange );
     gui.add( parameters, 'p', 1, 10, 1 ).onChange( onChange );
     gui.add( parameters, 'q', 0, 10, 1 ).onChange( onChange );
+    const rightControllerFolder = gui.addFolder('Right Controller')
+    rightControllerFolder.add(parameters.rightcontroller.position, 'x', -10.0, 10.0, 0.001).listen();
+    rightControllerFolder.add(parameters.rightcontroller.position, 'y', -10.0, 10.0, 0.001).listen();
+    rightControllerFolder.add(parameters.rightcontroller.position, 'z', -10.0, 10.0, 0.001).listen();
+    rightControllerFolder.add(parameters.rightcontroller, 'grabbed', 0, 1, 1 ).listen();
+    rightControllerFolder.open()
     gui.domElement.style.visibility = 'hidden';
 
     const igroup = new InteractiveGroup( renderer, camera );
     world.add( igroup );
 
-    const mesh = new HTMLMesh( gui.domElement );
-    mesh.position.x = - 0.75;
-    mesh.position.y = 1.5;
-    mesh.position.z = - 1.5;
-    //mesh.rotation.y = Math.PI / 4;
-    mesh.scale.setScalar( 2 );
-    igroup.add( mesh );
+    // 23.1.24: Heads up: HTMLMesh.js was patched to be updatable
+    htmlmesh = new HTMLMesh( gui.domElement );
+    htmlmesh.position.x = - 0.75;
+    htmlmesh.position.y = 1.5;
+    htmlmesh.position.z = - 1.5;
+    //htmlmesh.rotation.y = Math.PI / 4;
+    htmlmesh.scale.setScalar( 2 );
+    igroup.add( htmlmesh );
 
     mainControlPanel = new GridPanel(5,3);
     mainControlPanel.addButton(2,2,3,0,function(){adjusty(true);});
@@ -598,8 +626,23 @@ function render() {
     }
 
     pollControllerEvents(renderer, vrControllerEventMap);
+
+    if (controller2 != null && controller2.position != null) {
+        var wp = new THREE.Vector3();
+        // apparently either matrixWorld in controller isn't updated or its always (0,0,0). (same for controllerGrip).
+        // no effect controller2.updateMatrixWorld(false);
+        wp.setFromMatrixPosition( controller2.matrixWorld );
+        // but cylinder is updated
+        wp.setFromMatrixPosition( cylinder.matrixWorld );
+        parameters.rightcontroller.position.x = wp.x;
+        parameters.rightcontroller.position.y = wp.y;
+        parameters.rightcontroller.position.z = wp.z;
+    }
+    // 23.1.24: Heads up: HTMLMesh.js was patched to be updatable
+    htmlmesh.update();
+
     renderer.render( scene, camera );
-    framecnt++;
+    parameters.framecnt++;
 }
 
 function buildCylinder() {

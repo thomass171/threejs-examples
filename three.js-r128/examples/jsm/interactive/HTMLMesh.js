@@ -9,6 +9,8 @@ import {
 
 class HTMLMesh extends Mesh {
 
+// 23.1.24: Patched to be updatable
+
 	constructor( dom ) {
 
 		const texture = new HTMLTexture( dom );
@@ -29,6 +31,11 @@ class HTMLMesh extends Mesh {
 		this.addEventListener( 'mouseup', onEvent );
 		this.addEventListener( 'click', onEvent );
 
+this.htmltexture=texture;
+	}
+
+	update() {
+this.htmltexture.update();
 	}
 
 }

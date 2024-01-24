@@ -24,6 +24,8 @@ var axisThresholdUpper = 0.7;
 var axisThresholdLower = 0.2;
 var stickFired = [];
 
+// query controller for (non trigger) events. Only trigger is WebXR standard.
+// if event is found, the defined callback is called
 function pollControllerEvents(renderer, eventMap) {
   var handedness = "unknown";
 
