@@ -56,9 +56,10 @@ function pollControllerEvents(renderer, eventMap) {
             // The purpose of the math.abs seems to be for checking whether it is still pressed. Not used for now.
             // Buttons seems to have only values 0 and 1
             if (value !== old.buttons[button] /*|| Math.abs(value) > 0.8*/) {
-              if (debugLog) console.log(data.handedness + " button " + button + " value changed from " + old.buttons[button] + " to " + value);
-              //check if it is 'all the way pushed'
-              if (value === 1) {
+              if (true) console.log(data.handedness + " button " + button + " value changed from " + old.buttons[button] + " to " + value);
+              //check if it is 'all the way pushed'. 24.1.24: Grabber seems to be stick like and might not reach 1.00 at all.
+              //if (value === 1) {
+              if (value > 0.9) {
                 if (debugLog) console.log("Button " + button + " down");
                 checkVrControllerEvent(data.handedness + "-button-" + button + "-down", eventMap);
               } else {

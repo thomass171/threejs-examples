@@ -1,13 +1,13 @@
 # threejs VR examples
 
-#VrScene
+# VrScene
 
 ## Features
  1) highlights red box when it is hit by crosshair
- 2) red box and blue bar can be increased by trigger of right controller
- 3) teleport by click on ground
- 4) rotate by menu or by right controller thumbstick
- 5) Mouse clicking on the ground also teleports
+ 2) red box and blue bar can be increased by left/right controller trigger and mouse button
+ 3) teleport by mouse or left/right controller trigger click on ground
+ 4) rotate by menu, cursor keys or by right controller thumbstick
+ 5) yellow cylinder at left controller, green one at right controller
 
 # textures
 wovado from https://opengameart.org/content/stone-wall-1.

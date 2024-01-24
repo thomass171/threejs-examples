@@ -33,7 +33,7 @@ var logger = new ConsoleLogger();
 
 var clock;
 var container, world, worldOffset, carrier, mainControlPanel;
-var camera, scene, crosshairraycaster, renderer, bar, box1, ground, wall, cylinder;
+var camera, scene, crosshairraycaster, renderer, bar, box1, ground, wall, cylinder, rightcylinder;
 var  avatar, carrierposition;
 var INTERSECTED;
 var crosshair;
@@ -61,11 +61,14 @@ var htmlmesh = null;
 const parameters = {
     // have framecnt here to see gui is really updated
     framecnt: 0,
-    tube: 0.2,
-    tubularSegments: 150,
-    radialSegments: 20,
-    p: 2,
-    q: 3,
+    leftcontroller: {
+        position: {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0
+        },
+        grabbed: 0
+    },
     rightcontroller: {
         position: {
             x: 0.0,
@@ -92,8 +95,8 @@ vrControllerEventMap.set("right-stick-up", function () {console.log("Right stick
 vrControllerEventMap.set("right-stick-down", function () {console.log("Right stick down")});
 
 // grab button, or is it a stick?
-vrControllerEventMap.set("left-button-1-down", function () {console.log("left grabbed")});
-vrControllerEventMap.set("left-button-1-up", function () {console.log("left grabber released")});
+vrControllerEventMap.set("left-button-1-down", function () {console.log("left grabbed");parameters.leftcontroller.grabbed=1;});
+vrControllerEventMap.set("left-button-1-up", function () {console.log("left grabber released");parameters.leftcontroller.grabbed=0;});
 vrControllerEventMap.set("right-button-1-down", function () {console.log("right grabbed");parameters.rightcontroller.grabbed=1;});
 vrControllerEventMap.set("right-button-1-up", function () {console.log("right grabber released");parameters.rightcontroller.grabbed=0;});
 
@@ -372,8 +375,11 @@ function init() {
             carrier.add(controller2);
         }
 
-        cylinder = buildCylinder();
+        // cylinder at left and controller
+        cylinder = buildCylinder(0xffff00);
         controller1.add(cylinder);
+        rightcylinder = buildCylinder(0x00ff00);
+        controller2.add(rightcylinder);
     }
 
     // GUI
@@ -383,11 +389,12 @@ function init() {
     gui = new GUI( { width: 300 } );
     // gui.add(object, property, [min], [max], [step])
     gui.add( parameters, 'framecnt', 0, 100000, 1 ).listen().onChange( onChange );
-    gui.add( parameters, 'tube', 0.0, 1.0 ).onChange( onChange );
-    gui.add( parameters, 'tubularSegments', 10, 150, 1 ).onChange( onChange );
-    gui.add( parameters, 'radialSegments', 2, 20, 1 ).onChange( onChange );
-    gui.add( parameters, 'p', 1, 10, 1 ).onChange( onChange );
-    gui.add( parameters, 'q', 0, 10, 1 ).onChange( onChange );
+    const leftControllerFolder = gui.addFolder('Left Controller')
+    leftControllerFolder.add(parameters.leftcontroller.position, 'x', -10.0, 10.0, 0.001).listen();
+    leftControllerFolder.add(parameters.leftcontroller.position, 'y', -10.0, 10.0, 0.001).listen();
+    leftControllerFolder.add(parameters.leftcontroller.position, 'z', -10.0, 10.0, 0.001).listen();
+    leftControllerFolder.add(parameters.leftcontroller, 'grabbed', 0, 1, 1 ).listen();
+    leftControllerFolder.open()
     const rightControllerFolder = gui.addFolder('Right Controller')
     rightControllerFolder.add(parameters.rightcontroller.position, 'x', -10.0, 10.0, 0.001).listen();
     rightControllerFolder.add(parameters.rightcontroller.position, 'y', -10.0, 10.0, 0.001).listen();
@@ -401,7 +408,7 @@ function init() {
 
     // 23.1.24: Heads up: HTMLMesh.js was patched to be updatable
     htmlmesh = new HTMLMesh( gui.domElement );
-    htmlmesh.position.x = - 0.75;
+    htmlmesh.position.x = - 1.35;
     htmlmesh.position.y = 1.5;
     htmlmesh.position.z = - 1.5;
     //htmlmesh.rotation.y = Math.PI / 4;
@@ -627,13 +634,24 @@ function render() {
 
     pollControllerEvents(renderer, vrControllerEventMap);
 
+    if (controller1 != null && controller1.position != null) {
+        var wp = new THREE.Vector3();
+        // apparently either matrixWorld in controller isn't updated or its always (0,0,0). (same for controllerGrip).
+        // no effect controller2.updateMatrixWorld(false);
+        wp.setFromMatrixPosition( controller1.matrixWorld );
+        // but cylinder is updated
+        wp.setFromMatrixPosition( cylinder.matrixWorld );
+        parameters.leftcontroller.position.x = wp.x;
+        parameters.leftcontroller.position.y = wp.y;
+        parameters.leftcontroller.position.z = wp.z;
+    }
     if (controller2 != null && controller2.position != null) {
         var wp = new THREE.Vector3();
         // apparently either matrixWorld in controller isn't updated or its always (0,0,0). (same for controllerGrip).
         // no effect controller2.updateMatrixWorld(false);
         wp.setFromMatrixPosition( controller2.matrixWorld );
         // but cylinder is updated
-        wp.setFromMatrixPosition( cylinder.matrixWorld );
+        wp.setFromMatrixPosition( rightcylinder.matrixWorld );
         parameters.rightcontroller.position.x = wp.x;
         parameters.rightcontroller.position.y = wp.y;
         parameters.rightcontroller.position.z = wp.z;
@@ -645,9 +663,9 @@ function render() {
     parameters.framecnt++;
 }
 
-function buildCylinder() {
+function buildCylinder(col) {
     var geometry = new THREE.CylinderGeometry( 0.05, 0.05, 0.1, 32 );
-    var material = new THREE.MeshBasicMaterial( {color: 0xffff00} );
+    var material = new THREE.MeshBasicMaterial( {color: col} );
     var cylinder = new THREE.Mesh( geometry, material );
     return cylinder;
 }
