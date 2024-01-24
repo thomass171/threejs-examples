@@ -8,6 +8,7 @@
  3) teleport by mouse or left/right controller trigger click on ground
  4) rotate by menu, cursor keys or by right controller thumbstick
  5) yellow cylinder at left controller, green one at right controller
+ 6) red box and bar can be grabbed by left and right controller and repositioned
 
 # textures
 wovado from https://opengameart.org/content/stone-wall-1.
@@ -25,6 +26,8 @@ to see the effect. Or move the point light on z-axis by 's'/'w'.
 - key controls CURLEFT,CURRIGHT added
 - VR_DISABLED added
 - Textured wall added
+24.01.24:
+- grabbing
 
 # FpsScene
 
