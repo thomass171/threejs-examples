@@ -21,6 +21,7 @@ import * as THREE from './three.js-r128/build/three.module.js';
 
 // from https://threejs.org/docs/#manual/en/introduction/How-to-create-VR-content
 import { VRButton } from './three.js-r128/examples/jsm/webxr/VRButton.js';
+import { ARButton } from './three.js-r128/examples/jsm/webxr/ARButton.js';
 import { GUI } from './three.js-r128/examples/jsm/libs/dat.gui.module.js';
 import { HTMLMesh } from './three.js-r128/examples/jsm/interactive/HTMLMesh.js';
 import { InteractiveGroup } from './three.js-r128/examples/jsm/interactive/InteractiveGroup.js';
@@ -200,8 +201,9 @@ function init() {
     document.body.appendChild( container );
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color( 0x909090 );
-
+    if (usecase != 'AR') {
+        scene.background = new THREE.Color( 0x909090 );
+    }
     world = new THREE.Group();
     scene.add( world );
 
@@ -267,13 +269,24 @@ function init() {
 
     crosshairraycaster = new THREE.Raycaster();
 
-    renderer = new THREE.WebGLRenderer( { antialias: true } );
+    if (usecase == 'VR') {
+        renderer = new THREE.WebGLRenderer( { antialias: true } );
+    }
+    if (usecase == 'AR') {
+        // add transparent background
+        renderer = new THREE.WebGLRenderer( { antialias: true, alpha:true } );
+    }
     renderer.setPixelRatio( window.devicePixelRatio );
     renderer.setSize( window.innerWidth, window.innerHeight );
     container.appendChild( renderer.domElement );
 
     if (vrmode != VRMODE_DISABLED) {
-        document.body.appendChild( VRButton.createButton( renderer ) );
+        if (usecase == 'VR') {
+            document.body.appendChild( VRButton.createButton( renderer ) );
+        }
+        if (usecase == 'AR') {
+            document.body.appendChild( ARButton.createButton( renderer ) );
+        }
         renderer.xr.enabled = true;
         logger.debug("ReferenceSpace=" + renderer.xr.getReferenceSpace());
 
@@ -770,6 +783,8 @@ function tryGrab(cyl) {
             grabbed = element;
             cyl.attach(element);
             console.log("grabbed");
+        } else {
+            console.log("not grabbed with distance " + distance);
         }
     });
 }

@@ -28,8 +28,29 @@ to see the effect. Or move the point light on z-axis by 's'/'w'.
 - Textured wall added
 24.01.24:
 - grabbing
+- ArScene added for Quest 3 passthrough
 
 # FpsScene
 
 Simple for now, but should meet ThreeJs example games_fps.html (https://threejs.org/examples/#games_fps)
 one day using model collision-world.glb and VR.
+
+# Running for development
+
+As simple HTTP server can be launched by
+
+```
+/usr/local/opt/php@7.3/bin/php -S localhost:8009
+```
+
+and than the page opened in a browser by
+```
+http://localhost:8009/VrScene.html
+```
+Unfortunately this cannot be used for WebXR as this requires HTTPS. For development purposes
+it might be an option to disable the need for HTTPS
+for the dev server. This is done by:
+
+* enter URL 'chrome://flags'
+* Enable 'insecure origins treated as secure'
+* Enter the IP of the dev server like 'http://192.168.98.150'
